@@ -1,5 +1,6 @@
 .stack-work/
 muck.cabal
+stack.yaml
 *~
 
 # Vim
