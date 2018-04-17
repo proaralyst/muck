@@ -1,62 +1,65 @@
 module TermEmu.Automata
     ( State  (..)
     , Action (..)
-    ,
-    )
+    , entryAction
+    , exitAction
+    , nextState
+    ) where
 
 import qualified Data.Word as Word
 
 data State =
       Ground
-    | Escape_immediate
     | Escape
-    | Dcs_entry
-    | Dcs_intermediate
-    | Dcs_ignore
-    | Dcs_param
-    | Dcs_passthrough
-    | Csi_entry
-    | Csi_intermediate
-    | Csi_ignore
-    | Csi_param
-    | Sos_pm_apc_string
-    | Osc_string
+    | EscapeIntermediate
+    | DcsEntry
+    | DcsIntermediate
+    | DcsIgnore
+    | DcsParam
+    | DcsPassthrough
+    | CsiEntry
+    | CsiIntermediate
+    | CsiIgnore
+    | CsiParam
+    | IgnoreString
+    | OscString
     | Error
-    deriving (Show)
+    deriving (Show, Eq)
 
 data Action =
-    | Clear
+      Clear
     | Execute
     | Hook
-    | Osc_start
+    | OscStart
     | Nop
-    | Esc_dispatch
-    | Csi_dispatch
+    | EscapeDispatch
+    | CsiDispatch
     | Print
     | Collect
     | Put
-    | Osc_put
+    | OscPut
     | Param
     | Error String
+    deriving (Show, Eq)
 
 entryAction :: State -> Action
 entryAction Escape          = Clear
-entryAction Dcs_entry       = Clear
-entryAction Dcs_passthrough = Hook
-entryAction Osc_string      = Osc_start
-entryAction Csi_entry       = Clear
+entryAction DcsEntry        = Clear
+entryAction DcsPassthrough = Hook
+entryAction OscString       = OscStart
+entryAction CsiEntry        = Clear
 entryAction _               = Nop
 
 exitAction :: State -> Action
-exitAction Dcs_passthrough  = Unhook
-entryAction Osc_string      = Osc_end
+exitAction DcsPassthrough = Unhook
+exitAction OscString       = Osc_end
 
 inRange :: (Num a) => a -> a -> a -> Bool
 inRange x low high = low <= x && x <= high
 
 isNonPrinting :: Word.Word8 -> Bool
 isNonPrinting x =
-    x `inRange` 0x00 $ 0x17, x = 0x19, x `inRange` 0x1C $ 0x1F
+    x `inRange` 0x00 $ 0x17 || x == 0x19 || x `inRange` 0x1C $ 0x1F
 
 isPrinting :: Word.Word8 -> Bool
 isPrinting x = x `inRange` 0x20 $ 0x7F
@@ -68,93 +71,93 @@ nextState Error _ = (Error, Nop)
 nextState _ x
     -- Ground
     | x == 0x18, x == 0x1A, x == 0x99, x == 0x9A        = (Ground, Execute)
-    | x `inRange` 0x80 $ 0x8F, x `inRange` $ 0x91 0x97  = (Ground, Execute)
+    | x `inRange` 0x80 $ 0x8F, x `inRange` 0x91 $ 0x97  = (Ground, Execute)
     | x == 0x9C                                         = (Ground, Nop)
     -- Escape
     | x == 0x1B                                         = (Escape, Nop)
-    -- Sos_pm_apc_string
-    | x == 0x98, x == 0x9E, x == 0x9F                   = (Sos_pm_apc_string, Nop)
-    -- Dcs_entry
-    | x == 0x90                                         = (Dcs_entry, Nop)
-    -- Osc_string
-    | x == 0x9D                                         = (Osc_string, Nop)
-    -- Csi_entry
-    | x == 0x9B                                         = (Csi_entry, Nop)
+    -- IgnoreString
+    | x == 0x98, x == 0x9E, x == 0x9F                   = (IgnoreString, Nop)
+    -- DcsEntry
+    | x == 0x90                                         = (DcsEntry, Nop)
+    -- OscString
+    | x == 0x9D                                         = (OscString, Nop)
+    -- CsiEntry
+    | x == 0x9B                                         = (CsiEntry, Nop)
 nextState Ground x
     | isNonPrinting x                                   = (Ground, Execute)
     | isPrinting x                                      = (Ground, Print)
-nextState Escape_immediate x
-    | isNonPrinting x                                   = (Escape_immediate, Execute)
-    | x `inRange` 0x20 $ 0x2F                           = (Escape_immediate, Collect)
-    | x == 0x7F                                         = (Escape_immediate, Nop)
-    | x `inRange` 0x30 $ 0x7E                           = (Ground, Esc_dispatch)
+nextState EscapeIntermediate x
+    | isNonPrinting x                                   = (EscapeIntermediate, Execute)
+    | x `inRange` 0x20 $ 0x2F                           = (EscapeIntermediate, Collect)
+    | x == 0x7F                                         = (EscapeIntermediate, Nop)
+    | x `inRange` 0x30 $ 0x7E                           = (Ground, EscapeDispatch)
 nextState Escape x
     | isPrinting x                                      = (Escape, Execute)
     | x == 0x7F                                         = (Escape, Nop)
-    | x == 0x58, x == 0x5E, x == 0x5F                   = (Sos_pm_apc_string, Nop)
-    | x == 0x50                                         = (Dcs_entry, Nop)
-    | x == 0x5D                                         = (Osc_string, Nop)
-    | x == 0x5B                                         = (Csi_entry, Nop)
+    | x == 0x58, x == 0x5E, x == 0x5F                   = (IgnoreString, Nop)
+    | x == 0x50                                         = (DcsEntry, Nop)
+    | x == 0x5D                                         = (OscString, Nop)
+    | x == 0x5B                                         = (CsiEntry, Nop)
     | x `inRange` 0x30 $ 0x4F
     , x `inRange` 0x51 $ 0x57
     , x `inRange` 0x60 $ 0x7E
-    , x == 0x59, x == 0x5A, x == 0x5C                   = (Ground, Esc_dispatch)
-nextState Sos_pm_apc_string x
-    | isNonPrinting x, isPrinting x                     = (Sos_pm_apc_string, Nop)
+    , x == 0x59, x == 0x5A, x == 0x5C                   = (Ground, EscapeDispatch)
+nextState IgnoreString x
+    | isNonPrinting x, isPrinting x                     = (IgnoreString, Nop)
     | x == 0x9C                                         = (Ground, Nop)
-nextState Dcs_entry x
-    | isNonPrinting x                                   = (Dcs_entry, Nop)
-    | x                                                 = 0x7F          = (Dcs_entry, Nop)
-    | x `inRange` 0x20 $ 0x2F                           = (Dcs_intermediate, Collect)
-    | x == 0x3A                                         = (Dcs_ignore, Nop)
-    | x `inRange` 0x30 $ 0x39, x == 0x3B                = (Dcs_param, Param)
-    | x `inRange` 0x3C $ 0x3F                           = (Dcs_param, Collect)
-    | x `inRange` 0x40 $ 0x7E                           = (Dcs_passthrough, Nop)
-nextState Dcs_intermediate x
-    | isNonPrinting x                                   = (Dcs_intermediate, Nop)
-    | x `inRange` 0x20 $ 0x2F                           = (Dcs_intermediate, Collect)
-    | x == 0x7F                                         = (Dcs_intermediate, Nop)
-    | x `inRange` 0x30 $ 0x3F                           = (Dcs_ignore, Nop)
-    | x `inRange` 0x40 $ 0x7E                           = (Dcs_passthrough, Nop)
-nextState Dcs_ignore x
-    | isNonPrinting x, isPrinting x                     = (Dcs_ignore, Nop)
+nextState DcsEntry x
+    | isNonPrinting x                                   = (DcsEntry, Nop)
+    | x == 0x7F                                         = (DcsEntry, Nop)
+    | x `inRange` 0x20 $ 0x2F                           = (DcsIntermediate, Collect)
+    | x == 0x3A                                         = (DcsIgnore, Nop)
+    | x `inRange` 0x30 $ 0x39, x == 0x3B                = (DcsParam, Param)
+    | x `inRange` 0x3C $ 0x3F                           = (DcsParam, Collect)
+    | x `inRange` 0x40 $ 0x7E                           = (DcsPassthrough, Nop)
+nextState DcsIntermediate x
+    | isNonPrinting x                                   = (DcsIntermediate, Nop)
+    | x `inRange` 0x20 $ 0x2F                           = (DcsIntermediate, Collect)
+    | x == 0x7F                                         = (DcsIntermediate, Nop)
+    | x `inRange` 0x30 $ 0x3F                           = (DcsIgnore, Nop)
+    | x `inRange` 0x40 $ 0x7E                           = (DcsPassthrough, Nop)
+nextState DcsIgnore x
+    | isNonPrinting x, isPrinting x                     = (DcsIgnore, Nop)
     | x == 0x9C                                         = (Ground, Nop)
-nextState Dcs_param x
-    | isNonPrinting x                                   = (Dcs_param, Nop)
-    | x `inRange` 0x30 $ 0x39, x == 0x3B                = (Dcs_param, Param)
-    | x == 0x7F                                         = (Dcs_param, Nop)
-    | x `inRange` 0x3C $ 0x3F, x == 0x3A                = (Dcs_ignore, Nop)
-    | x `inRange` 0x20 $ 0x2F                           = (Dcs_intermediate, Collect)
-    | x `inRange` 0x40 $ 0x7E                           = (Dcs_passthrough, Nop)
-nextState Dcs_passthrough x
-    | isNonPrinting x, isPrinting x                     = (Dcs_passthrough, Put)
-    | x == 0x7F                                         = (Dcs_passthrough, Nop)
+nextState DcsParam x
+    | isNonPrinting x                                   = (DcsParam, Nop)
+    | x `inRange` 0x30 $ 0x39, x == 0x3B                = (DcsParam, Param)
+    | x == 0x7F                                         = (DcsParam, Nop)
+    | x `inRange` 0x3C $ 0x3F, x == 0x3A                = (DcsIgnore, Nop)
+    | x `inRange` 0x20 $ 0x2F                           = (DcsIntermediate, Collect)
+    | x `inRange` 0x40 $ 0x7E                           = (DcsPassthrough, Nop)
+nextState DcsPassthrough x
+    | isNonPrinting x, isPrinting x                     = (DcsPassthrough, Put)
+    | x == 0x7F                                         = (DcsPassthrough, Nop)
     | x == 0x9C                                         = (Ground, Nop)
-nextState Osc_string x
-    | isNonPrinting x                                   = (Osc_string, Nop)
-    | x `inRange` 0x20 $ 0x7F                           = (Osc_string, Osc_put)
+nextState OscString x
+    | isNonPrinting x                                   = (OscString, Nop)
+    | x `inRange` 0x20 $ 0x7F                           = (OscString, OscPut)
     | x == 0x9C                                         = (Ground, Nop)
-nextState Csi_entry x
-    | isNonPrinting x                                   = (Csi_entry, Execute)
-    | x == 0x7F                                         = (Csi_entry, Nop)
-    | x `inRange` 0x40 $ 0x7E                           = (Ground, Csi_dispatch)
-    | x `inRange` 0x20 $ 0x2F                           = (Csi_intermediate, Collect)
-    | x == 0x3A                                         = (Csi_ignore, Nop)
-    | x `inRange` 0x30 $ 0x39, x == 0x3B                = (Csi_param, Param)
-    | x `inRange` 0x3C $ 0x3F                           = (Csi_param, Collect)
-nextState Csi_intermediate x
-    | isNonPrinting x                                   = (Csi_intermediate, Execute)
-    | x `inRange` 0x20 $ 0x2F                           = (Csi_intermediate, Collect)
-    | x == 0x7F                                         = (Csi_intermediate, Nop)
-    | x `inRange` 0x30 $ 0x3F                           = (Csi_ignore, Nop)
-    | x `inRange` 0x40 $ 0x7E                           = (Ground, Csi_dispatch)
-nextState Csi_ignore x
-    | isNonPrinting x                                   = (Csi_ignore, Execute)
-    | x `inRange` 0x20 $ 0x3F, x == 0x7F                = (Csi_ignore, Nop)
+nextState CsiEntry x
+    | isNonPrinting x                                   = (CsiEntry, Execute)
+    | x == 0x7F                                         = (CsiEntry, Nop)
+    | x `inRange` 0x40 $ 0x7E                           = (Ground, CsiDispatch)
+    | x `inRange` 0x20 $ 0x2F                           = (CsiIntermediate, Collect)
+    | x == 0x3A                                         = (CsiIgnore, Nop)
+    | x `inRange` 0x30 $ 0x39, x == 0x3B                = (CsiParam, Param)
+    | x `inRange` 0x3C $ 0x3F                           = (CsiParam, Collect)
+nextState CsiIntermediate x
+    | isNonPrinting x                                   = (CsiIntermediate, Execute)
+    | x `inRange` 0x20 $ 0x2F                           = (CsiIntermediate, Collect)
+    | x == 0x7F                                         = (CsiIntermediate, Nop)
+    | x `inRange` 0x30 $ 0x3F                           = (CsiIgnore, Nop)
+    | x `inRange` 0x40 $ 0x7E                           = (Ground, CsiDispatch)
+nextState CsiIgnore x
+    | isNonPrinting x                                   = (CsiIgnore, Execute)
+    | x `inRange` 0x20 $ 0x3F, x == 0x7F                = (CsiIgnore, Nop)
     | x `inRange` 0x40 $ 0x7E                           = (Ground, Nop)
-nextState Csi_param x
-    | isNonPrinting x                                   = (Csi_param, Execute)
-    | x `inRange` 0x30 $ 0x39, x == 0x3B                = (Csi_param, Param)
-    | x == 0x7F                                         = (Csi_param, Nop)
-    | x `inRange` 0x3C $ 0x3F, x == 0x3A                = (Csi_ignore, Nop)
-    | x `inRange` 0x40 $ 0x7E                           = (Ground, Csi_dispatch)
+nextState CsiParam x
+    | isNonPrinting x                                   = (CsiParam, Execute)
+    | x `inRange` 0x30 $ 0x39, x == 0x3B                = (CsiParam, Param)
+    | x == 0x7F                                         = (CsiParam, Nop)
+    | x `inRange` 0x3C $ 0x3F, x == 0x3A                = (CsiIgnore, Nop)
+    | x `inRange` 0x40 $ 0x7E                           = (Ground, CsiDispatch)
