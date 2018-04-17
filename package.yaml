@@ -21,6 +21,12 @@ description:         Please see the README on Github at <https://github.com/proa
 
 dependencies:
 - base >= 4.7 && < 5
+- lens == 4.16.1
+- free == 5.0.1
+
+default-extensions:
+- TemplateHaskell
+- DeriveFunctor
 
 library:
   source-dirs: src

@@ -23,15 +23,15 @@ data State =
     | CsiParam
     | IgnoreString
     | OscString
-    | Error
     deriving (Show, Eq)
 
 data Action =
       Clear
     | Execute
     | Hook
+    | Unhook
     | OscStart
-    | Nop
+    | OscEnd
     | EscapeDispatch
     | CsiDispatch
     | Print
@@ -39,34 +39,32 @@ data Action =
     | Put
     | OscPut
     | Param
-    | Error String
+    | Nop
     deriving (Show, Eq)
 
 entryAction :: State -> Action
 entryAction Escape          = Clear
 entryAction DcsEntry        = Clear
-entryAction DcsPassthrough = Hook
+entryAction DcsPassthrough  = Hook
 entryAction OscString       = OscStart
 entryAction CsiEntry        = Clear
 entryAction _               = Nop
 
 exitAction :: State -> Action
 exitAction DcsPassthrough = Unhook
-exitAction OscString       = Osc_end
+exitAction OscString      = OscEnd
 
-inRange :: (Num a) => a -> a -> a -> Bool
+inRange :: (Num a, Ord a) => a -> a -> a -> Bool
 inRange x low high = low <= x && x <= high
 
 isNonPrinting :: Word.Word8 -> Bool
 isNonPrinting x =
-    x `inRange` 0x00 $ 0x17 || x == 0x19 || x `inRange` 0x1C $ 0x1F
+    (x `inRange` 0x00 $ 0x17) || x == 0x19 || (x `inRange` 0x1C $ 0x1F)
 
 isPrinting :: Word.Word8 -> Bool
 isPrinting x = x `inRange` 0x20 $ 0x7F
 
 nextState :: State -> Word.Word8 -> (State, Action)
--- Can't leave the error state
-nextState Error _ = (Error, Nop)
 -- From anywhere transitions
 nextState _ x
     -- Ground
