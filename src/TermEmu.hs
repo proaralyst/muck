@@ -6,8 +6,10 @@ import Prelude hiding (print, read)
 
 import qualified Data.Word as Word
 import qualified TermEmu.Automata as A
+import qualified TermEmu.SGR as SGR
 import Control.Lens
 import Control.Monad.Free (Free(..), liftF)
+import Numeric.Natural (Natural)
 import Safe (readMay)
 
 data ParserState =
@@ -31,10 +33,12 @@ eraseAmount 1 = ToCursor
 eraseAmount 2 = WholeDisplay
 eraseAmount _ = FromCursor
 
+-- TODO: SM RM & DSR
+
 type Param = Maybe Natural
 
-data CSI = 
-    | ICH Param
+data CSI =
+      ICH Param
     | CUU Param
     | CUD Param
     | CUF Param
@@ -51,16 +55,16 @@ data CSI =
     | SU  Param
     | ECH Param
     | CBT
-    | REP Param 
+    | REP Param
     | DA  Param
     | VPA Param
     | HVP Param Param
     | TBC Param
-    | SM SM
-    | RM RM
-    | SGR SGR
-    | DSR DSR
-    | DECSTBM Param Param 
+    | SM
+    | RM
+    | SGR SGR.SGR
+    | DSR
+    | DECSTBM Param Param
     | SCP Param Param
 
 data Out =

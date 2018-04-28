@@ -8,6 +8,7 @@ import qualified Data.Word as Word
 import qualified Data.Text as T
 import Control.Monad.Free (Free(..), liftF)
 import Control.Lens
+import Data.Maybe (fromMaybe)
 import Numeric.Natural (Natural)
 import Text.Printf (printf)
 
@@ -77,14 +78,26 @@ type Effect = Free EffectF
 emit :: SGR -> Effect ()
 emit sgr = liftF (Emit sgr ())
 
+-- TODO: rename
 throwError :: T.Text -> Effect ()
 throwError text = liftF (Error text ())
 
 pop :: Effect (Maybe Word.Word8)
 pop = liftF (Pop id)
 
-consumeColour :: Effect Colour
-consumeColour = undefined
+consumeColourRgb :: Effect ColourRGB
+consumeColourRgb = do
+    let defaultPop = fromIntegral . fromMaybe 0 <$> pop
+    ColourRGB <$> defaultPop <*> defaultPop <*> defaultPop
+
+consumeColour :: (Colour -> SGR) -> Effect ()
+consumeColour f =
+    pop >>= \case
+        Just 2 -> f . RGB <$> consumeColourRgb >>= emit
+        Just 5 -> f . Colour256 . fromMaybe 0 <$> pop >>= emit
+        Just x -> throwError . T.pack $
+            printf "Unrecognised extended colour prefix: %i" x
+        Nothing -> return ()
 
 -- TODO: extended colour & parameter management
 consumeParam :: Word.Word8 -> Effect ()
@@ -103,9 +116,9 @@ consumeParam 25 = emit Steady
 consumeParam 26 = emit Positive
 consumeParam 27 = emit Revealed
 consumeParam 29 = emit NotStrikethrough
-consumeParam 38 = consumeColour >>= (emit . Fg)
+consumeParam 38 = consumeColour Fg
 consumeParam 39 = emit $ Fg Default
-consumeParam 48 = consumeColour >>= (emit . Fg)
+consumeParam 48 = consumeColour Bg
 consumeParam 49 = emit $ Bg Default
 consumeParam x
     | x >= 30 && x <= 37 =
@@ -135,4 +148,4 @@ runEffect = run [] where
 
 -- TODO: given this is processing a stream, maybe another type?
 dispatchSGR :: [Word.Word8] -> [Either T.Text SGR]
-dispatchSGR params = fst $ runEffect params dispatch 
+dispatchSGR params = fst $ runEffect params dispatch
