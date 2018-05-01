@@ -46,7 +46,7 @@ setup = do
 
 handleOutput :: Screen.Screen -> IO ()
 handleOutput screen = do
-    log <- openFile "log" WriteMode
+    log <- openFile "/tmp/log" WriteMode
     hSetBuffering log NoBuffering
     runConduit $ Screen.outputConduit screen
         .| logger log
