@@ -4,13 +4,15 @@ module TermEmu
 
 import Prelude hiding (print, read)
 
+import qualified Data.Text as T
 import qualified Data.Word as Word
 import qualified TermEmu.Automata as A
 import qualified TermEmu.SGR as SGR
 import Control.Lens
-import Control.Monad.Free (Free(..), liftF)
+import Control.Monad.State (State, put, get, gets)
 import Numeric.Natural (Natural)
 import Safe (readMay)
+import Text.Printf (printf)
 
 data ParserState =
     ParserState
@@ -22,18 +24,7 @@ data ParserState =
 
 makeLenses ''ParserState
 
-data DisplayErase =
-      FromCursor
-    | ToCursor
-    | WholeDisplay
-
-eraseAmount :: Word.Word8 -> DisplayErase
-eraseAmount 0 = FromCursor
-eraseAmount 1 = ToCursor
-eraseAmount 2 = WholeDisplay
-eraseAmount _ = FromCursor
-
--- TODO: SM RM & DSR
+-- TODO: DA SM RM & DSR
 
 type Param = Maybe Natural
 
@@ -56,13 +47,13 @@ data CSI =
     | ECH Param
     | CBT
     | REP Param
-    | DA  Param
+    | DA
     | VPA Param
     | HVP Param Param
     | TBC Param
     | SM
     | RM
-    | SGR SGR.SGR
+    | SGR [Either T.Text SGR.SGR]
     | DSR
     | DECSTBM Param Param
     | SCP Param Param
@@ -71,65 +62,68 @@ data Out =
       Raw Word.Word8
     | Esc
     | CSI CSI
-    | Debug String
+    | Debug T.Text
 
-uintParam :: State ParserState Natural
-uintParam state =
+uintParam :: State ParserState Param
+uintParam =
     use params >>= extract
   where
-    extract [] = return 0
+    extract :: [Word.Word8] -> State ParserState Param
+    extract [] = return Nothing
     extract (p:ps) = do
         params .= ps
-        return p
+        return . Just . fromIntegral $ p
 
 -- TODO: clear state
 -- TODO: change default behaviour to Nothing so the non-zero defaults work
 -- TODO: find out what WINOPS & RCP are
-dispatchCsi :: Word.Word8 -> State ParserState Out
-dispatchCsi '@' = Out . ICH <$> uintParam
-dispatchCsi 'A' = Out . CUU <$> uintParam
-dispatchCsi 'B' = Out . CUD <$> uintParam
-dispatchCsi 'C' = Out . CUF <$> uintParam
-dispatchCsi 'D' = Out . CUB <$> uintParam
-dispatchCsi 'E' = Out . CNL <$> uintParam
-dispatchCsi 'F' = Out . CPL <$> uintParam
-dispatchCsi 'G' = Out . CHA <$> uintParam
-dispatchCsi 'H' = Out . CUP <$> uintParam <*> uintparam
-dispatchCsi 'J' = Out . ED . eraseAmount <$> uintParam
-dispatchCsi 'K' = Out . EL . eraseAmount <$> uintParam
-dispatchCsi 'L' = Out . IL <$> uintParam
-dispatchCsi 'M' = Out . DL <$> uintParam
-dispatchCsi 'P' = Out . DCH <$> uintParam
-dispatchCsi 'S' = Out . SU <$> uintParam
-dispatchCsi 'X' = Out . ECH <$> uintParam
-dispatchCsi 'Z' = Out . CBT
-dispatchCsi 'b' = Out . REP <$> uintParam -- this one might need some more state
-dispatchCsi 'c' = dispatchDA -- private: >
-dispatchCsi 'd' = Out . VPA <$> uintParam
-dispatchCsi 'f' = Out . HVP <$> uintParam <*> uintparam -- Same as CUP
+dispatchCsi :: Char -> State ParserState Out
+dispatchCsi '@' = CSI . ICH <$> uintParam
+dispatchCsi 'A' = CSI . CUU <$> uintParam
+dispatchCsi 'B' = CSI . CUD <$> uintParam
+dispatchCsi 'C' = CSI . CUF <$> uintParam
+dispatchCsi 'D' = CSI . CUB <$> uintParam
+dispatchCsi 'E' = CSI . CNL <$> uintParam
+dispatchCsi 'F' = CSI . CPL <$> uintParam
+dispatchCsi 'G' = CSI . CHA <$> uintParam
+dispatchCsi 'H' = CSI <$> (CUP <$> uintParam <*> uintParam)
+dispatchCsi 'J' = CSI . ED <$> uintParam
+dispatchCsi 'K' = CSI . EL <$> uintParam
+dispatchCsi 'L' = CSI . IL <$> uintParam
+dispatchCsi 'M' = CSI . DL <$> uintParam
+dispatchCsi 'P' = CSI . DCH <$> uintParam
+dispatchCsi 'S' = CSI . SU <$> uintParam
+dispatchCsi 'X' = CSI . ECH <$> uintParam
+dispatchCsi 'Z' = return $ CSI CBT
+dispatchCsi 'b' = CSI . REP <$> uintParam -- this one might need some more state
+dispatchCsi 'c' = return $ CSI DA -- private: >
+dispatchCsi 'd' = CSI . VPA <$> uintParam
+dispatchCsi 'f' = CSI <$> (HVP <$> uintParam <*> uintParam) -- Same as CUP
 -- TODO: TabClear only allows 0 or 3 (at cursor or all)
-dispatchCsi 'g' = Out . TBC <$> uintParam
-dispatchCsi 'h' = dispatchSetMode -- private: ?
-dispatchCsi 'l' = dispatchResetMode -- private: ?
-dispatchCsi 'm' = dispatchSelectGraphics
-dispatchCsi 'n' = dispatchDSR -- private: ' '
-dispatchCsi 'r' = Out . DECSTBM <$> uintParam <*> uintParam
-dispatchCsi 's' = Out . SCP <$> uintParam <*> uintParam
+dispatchCsi 'g' = CSI . TBC <$> uintParam
+dispatchCsi 'h' = return $ CSI SM -- private: ?
+dispatchCsi 'l' = return $ CSI RM -- private: ?
+dispatchCsi 'm' = CSI . SGR . SGR.dispatchSGR . (^.params) <$> get
+dispatchCsi 'n' = return $ CSI DSR -- private: ' '
+dispatchCsi 'r' = CSI <$> (DECSTBM <$> uintParam <*> uintParam)
+dispatchCsi 's' = CSI <$> (SCP <$> uintParam <*> uintParam)
 dispatchCsi x   = do
     params <- use params
     intermediate <- use intermediate
-    return . Debug $ printf
-        "Unrecognised CSI: %c; params = {%s}; intermediate = {%s}"
-        params intermediate
+    return . Debug . T.pack $ printf
+        "Unrecognised CSI: %i; params = {%s}; intermediate = {%s}"
+        x (show params) (show intermediate)
 
 init :: ParserState
 init = ParserState A.Ground [] [] []
 
-applyAction :: Word.Word8 -> A.Action -> Program ()
+{-
+applyAction :: Word.Word8 -> A.Action -> State ParserState ()
 applyAction _ A.Clear = do
-    modify $ set params mempty
-    modify $ set intermediate mempty
-    modify $ set final mempty
+    params .= mempty
+    intermediate .= mempty
+    final .= mempty
+
 applyAction x A.Execute =
     -- TODO: actually execute
     applyAction x A.Clear
@@ -147,7 +141,7 @@ applyAction _ A.OscPut = return ()
 applyAction x A.Param = modify $ over params (x:)
 applyAction _ A.Nop = return ()
 
-transitionAction :: Word.Word8 -> A.State -> A.State -> (A.State -> A.Action) -> State (Maybe Word.Word8)
+transitionAction :: Word.Word8 -> A.State -> A.State -> (A.State -> A.Action) -> State (Maybe Word.Word8) ()
 transitionAction char oldState newState f
     | oldState == newState = applyAction char $ f newState
     | otherwise = return ()
@@ -161,3 +155,4 @@ process char = do
     applyAction char action
     doAction A.exitAction
     modify $ set automataState nextState
+-}
