@@ -17,9 +17,6 @@ import System.Posix.Signals (
     softwareTermination)
 import System.Process (CmdSpec(..))
 
-tearDown :: MVar () -> IO ()
-tearDown mvar = putMVar mvar ()
-
 setup :: IO (MVar ())
 setup = do
     hSetBuffering stdin NoBuffering
@@ -30,7 +27,7 @@ setup = do
             , softwareTermination
             ]
     termVar <- newEmptyMVar
-    let install sig = installHandler sig (Catch . tearDown $ termVar) Nothing
+    let install sig = installHandler sig (Catch $ putMVar termVar ()) Nothing
     install `mapM_` killSigs
     return termVar
 
