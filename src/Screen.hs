@@ -19,8 +19,8 @@ import System.Process
     (CmdSpec, ProcessHandle(..), CreateProcess(..), createProcess, StdStream(..))
 
 data Screen = Screen
-    { _pty :: Handle
-    , _child :: ProcessHandle
+    { _pty   :: !Handle
+    , _child :: !ProcessHandle
     }
 
 makeLenses ''Screen
