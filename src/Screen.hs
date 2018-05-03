@@ -3,15 +3,15 @@ module Screen
     , pty
     , child
     , new
-    , outputConduit
-    , inputConduit
+    , output
+    , input
     ) where
 
 import qualified Data.Word as Word
 import Control.Lens
 import Data.ByteString (ByteString(..), hGetSome)
-import Data.Conduit (ConduitT)
-import Data.Conduit.Combinators (sourceHandle, sinkHandle)
+import Pipes
+import Pipes.ByteString (fromHandle, toHandle)
 import System.IO (Handle(..), hSetBuffering, BufferMode(..))
 import System.Posix.Terminal (openPseudoTerminal)
 import System.Posix.IO (fdToHandle)
@@ -54,8 +54,8 @@ new cmdspec = do
         }
     return $ Screen master ph
 
-outputConduit :: Screen -> ConduitT i ByteString IO ()
-outputConduit screen = sourceHandle $ screen^.pty
+output :: Screen -> Producer ByteString IO ()
+output screen = fromHandle $ screen^.pty
 
-inputConduit :: Screen -> ConduitT ByteString o IO ()
-inputConduit screen = sinkHandle $ screen^.pty
+input :: Screen -> Consumer ByteString IO ()
+input screen = toHandle $ screen^.pty
