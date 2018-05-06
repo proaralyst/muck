@@ -1,54 +1,74 @@
 module TermEmu
     ( Out(..)
+    , TabClear(..)
+    , BottomMargin(..)
+    , CSI(..)
     , number
     , params
     , parse
     ) where
 
 import qualified Data.ByteString as BS
-import qualified Data.ByteString.Char8 as BC
 import qualified Data.Text as T
+import qualified TermEmu.SGR as SGR
 
 import Control.Applicative ((<|>))
 import Data.Attoparsec.ByteString
-    (Parser(..) , (<?>), sepBy, string, option, many1, satisfy, inClass)
+    (Parser, (<?>), sepBy, string, option, many1, satisfy, inClass)
 import qualified Data.Attoparsec.ByteString.Char8 as AC
 import Data.Foldable (foldl')
+import Data.Maybe (fromMaybe)
 import Numeric.Natural (Natural)
+import Safe (headMay)
 
 -- TODO: DA SM RM & DSR
 
-type Param = Natural
+data TabClear =
+      AtCursor
+    | All
+    deriving (Show)
+
+instance Enum TabClear where
+    toEnum 0 = AtCursor
+    toEnum 3 = All
+    toEnum _ = AtCursor
+
+    fromEnum AtCursor = 0
+    fromEnum All      = 3
+
+data BottomMargin =
+      Bottom
+    | Line !Natural
+    deriving (Show)
 
 data CSI =
-      ICH Param
-    | CUU Param
-    | CUD Param
-    | CUF Param
-    | CUB Param
-    | CNL Param
-    | CPL Param
-    | CHA Param
-    | CUP Param Param
-    | ED  Param
-    | EL  Param
-    | IL  Param
-    | DL  Param
-    | DCH Param
-    | SU  Param
-    | ECH Param
-    | CBT
-    | REP Param
+      ICH !Natural
+    | CUU !Natural
+    | CUD !Natural
+    | CUF !Natural
+    | CUB !Natural
+    | CNL !Natural
+    | CPL !Natural
+    | CHA !Natural
+    | CUP !Natural !Natural
+    | ED  !Natural
+    | EL  !Natural
+    | IL  !Natural
+    | DL  !Natural
+    | DCH !Natural
+    | SU  !Natural
+    | ECH !Natural
+    | CBT !Natural
+    | REP !Natural
     | DA
-    | VPA Param
-    | HVP Param Param
-    | TBC Param
+    | VPA !Natural
+    | HVP !Natural !Natural
+    | TBC !TabClear
     | SM
     | RM
-    | SGR
+    | SGR ![Either T.Text SGR.SGR]
     | DSR
-    | DECSTBM Param Param
-    | SCP Param Param
+    | DECSTBM !Natural !BottomMargin
     deriving (Show)
 
 number :: Parser Natural
@@ -67,12 +87,66 @@ params = param `sepBy` separator <?> "Params"
     param = number <?> "Param"
     separator = AC.char ':' <|> AC.char ';'
 
+pair :: (Natural -> Natural -> a) -> Natural -> Natural -> [Natural] -> a
+pair f first second []          = f first second
+pair f _     second [x]         = f x second
+pair f _     _      (x : y : _) = f x y
+
+deviceAttrs :: Bool -> [Natural] -> CSI
+deviceAttrs = undefined
+
+resetMode :: Bool -> [Natural] -> CSI
+resetMode = undefined
+
+setMode :: Bool -> [Natural] -> CSI
+setMode = undefined
+
+selectGfx :: [Natural] -> CSI
+selectGfx = SGR . SGR.dispatchSGR
+
+deviceStatus :: Bool -> [Natural] -> CSI
+deviceStatus = undefined
+
+setTBM :: [Natural] -> CSI
+setTBM [] = DECSTBM 1 Bottom
+setTBM [x] = DECSTBM x Bottom
+setTBM (t : b : _) = DECSTBM t (Line b)
 
 csi :: Parser CSI
-csi = undefined
+csi = intro *> (
+        ICH <$> oneParam '@' 1
+    <|> CUU <$> oneParam 'A' 1
+    <|> CUD <$> oneParam 'B' 1
+    <|> CUF <$> oneParam 'C' 1
+    <|> CUB <$> oneParam 'D' 1
+    <|> CNL <$> oneParam 'E' 1
+    <|> CPL <$> oneParam 'F' 1
+    <|> CHA <$> oneParam 'G' 1
+    <|> pair CUP 1 2 <$> (params <* AC.char 'H')
+    <|> ED  <$> oneParam 'J' 0
+    <|> EL  <$> oneParam 'K' 0
+    <|> IL  <$> oneParam 'L' 1
+    <|> DL  <$> oneParam 'M' 1
+    <|> DCH <$> oneParam 'P' 1
+    <|> SU  <$> oneParam 'S' 1
+    <|> ECH <$> oneParam 'X' 1
+    <|> CBT <$> oneParam 'Z' 1
+    <|> REP <$> oneParam 'b' 1
+    <|> deviceAttrs <$> private <*> params <* AC.char 'c' -- TODO: might actually be '>' for this one's private char
+    <|> VPA <$> oneParam 'd' 1
+    <|> pair HVP 1 2 <$> (params <* AC.char 'f') -- TODO: consider emitting CUP here
+    <|> TBC . toEnum . fromIntegral <$> oneParam 'g' 0
+    <|> resetMode <$> private <*> params <* AC.char 'h'
+    <|>   setMode <$> private <*> params <* AC.char 'l'
+    <|> selectGfx <$> params <* AC.char 'm'
+    <|> deviceStatus <$> private <*> params <* AC.char 'n'
+    <|> setTBM <$> params <* AC.char 'r'
+    )
   where
     private = option False $ const True <$> AC.char '?'
     intro = string (BS.pack [0x1b, 0x5b]) <?> "CSI" -- ESC [
+    defaultParam val = fromMaybe val . headMay <$> params
+    oneParam char def = defaultParam def <* AC.char char
 
 data Out =
       Raw Char
@@ -83,4 +157,5 @@ data Out =
 
 
 parse :: Parser Out
-parse = undefined
+parse = CSI <$> csi
+

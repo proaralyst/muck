@@ -1,14 +1,15 @@
 module TermEmu.SGR
     ( Colour8(..)
+    , ColourRGB(..), red , green, blue
     , SGR(..)
     , dispatchSGR
     ) where
 
-import qualified Data.Word as Word
 import qualified Data.Text as T
 import Control.Monad.Free (Free(..), liftF)
 import Control.Lens
 import Data.Maybe (fromMaybe)
+import Data.Word (Word8)
 import Numeric.Natural (Natural)
 import Text.Printf (printf)
 
@@ -23,15 +24,25 @@ data Colour8 =
     | White
     deriving (Eq, Ord, Show)
 
-dispatchColour8 :: Word.Word8 -> Colour8
-dispatchColour8 0 = Black
-dispatchColour8 1 = Red
-dispatchColour8 2 = Green
-dispatchColour8 3 = Yellow
-dispatchColour8 4 = Blue
-dispatchColour8 5 = Magenta
-dispatchColour8 6 = Cyan
-dispatchColour8 7 = White
+instance Enum Colour8 where
+    toEnum 0 = Black
+    toEnum 1 = Red
+    toEnum 2 = Green
+    toEnum 3 = Yellow
+    toEnum 4 = Blue
+    toEnum 5 = Magenta
+    toEnum 6 = Cyan
+    toEnum 7 = White
+    toEnum _ = White
+
+    fromEnum Black   = 0
+    fromEnum Red     = 1
+    fromEnum Green   = 2
+    fromEnum Yellow  = 3
+    fromEnum Blue    = 4
+    fromEnum Magenta = 5
+    fromEnum Cyan    = 6
+    fromEnum White   = 7
 
 data ColourRGB =
     ColourRGB
@@ -44,7 +55,7 @@ makeLenses ''ColourRGB
 
 data Colour =
       Colour8 Colour8
-    | Colour256 Word.Word8
+    | Colour256 Word8
     | RGB ColourRGB
     | Default
     deriving (Eq, Show)
@@ -72,7 +83,7 @@ data SGR =
 data EffectF r =
       Emit SGR r
     | Error T.Text r
-    | Pop (Maybe Word.Word8 -> r)
+    | Pop (Maybe Natural -> r)
     deriving (Functor)
 
 type Effect = Free EffectF
@@ -84,7 +95,7 @@ emit sgr = liftF (Emit sgr ())
 throwError :: T.Text -> Effect ()
 throwError text = liftF (Error text ())
 
-pop :: Effect (Maybe Word.Word8)
+pop :: Effect (Maybe Natural)
 pop = liftF (Pop id)
 
 consumeColourRgb :: Effect ColourRGB
@@ -96,13 +107,13 @@ consumeColour :: (Colour -> SGR) -> Effect ()
 consumeColour f =
     pop >>= \case
         Just 2 -> f . RGB <$> consumeColourRgb >>= emit
-        Just 5 -> f . Colour256 . fromMaybe 0 <$> pop >>= emit
+        Just 5 -> f . Colour256 . fromIntegral . fromMaybe 0 <$> pop >>= emit
         Just x -> throwError . T.pack $
             printf "Unrecognised extended colour prefix: %i" x
         Nothing -> return ()
 
 -- TODO: extended colour & parameter management
-consumeParam :: Word.Word8 -> Effect ()
+consumeParam :: Natural -> Effect ()
 consumeParam 1  = emit Bright
 consumeParam 2  = emit Dim
 consumeParam 3  = emit Italics
@@ -124,9 +135,9 @@ consumeParam 48 = consumeColour Bg
 consumeParam 49 = emit $ Bg Default
 consumeParam x
     | x >= 30 && x <= 37 =
-    emit . Fg . Colour8 . dispatchColour8 $ x - 30
+    emit . Fg . Colour8 . toEnum . fromIntegral $ x - 30
     | x >= 40 && x <= 47 =
-    emit . Bg . Colour8 . dispatchColour8 $ x - 40
+    emit . Bg . Colour8 . toEnum . fromIntegral $ x - 40
     | otherwise =
         throwError . T.pack $ printf "Unrecognised SGR param: %i" x
 
@@ -138,7 +149,7 @@ dispatch =
         consumeParam p
         dispatch
 
-runEffect :: [Word.Word8] -> Effect a -> ([Either T.Text SGR], a)
+runEffect :: [Natural] -> Effect a -> ([Either T.Text SGR], a)
 runEffect = run [] where
     run acc _ (Pure x) = (reverse acc, x)
     run acc params (Free f) = case f of
@@ -149,5 +160,5 @@ runEffect = run [] where
             (p:ps) -> run acc ps     (f $ Just p)
 
 -- TODO: given this is processing a stream, maybe another type?
-dispatchSGR :: [Word.Word8] -> [Either T.Text SGR]
+dispatchSGR :: [Natural] -> [Either T.Text SGR]
 dispatchSGR params = fst $ runEffect params dispatch

@@ -7,7 +7,7 @@ import qualified TermEmu as T
 import qualified Data.ByteString as BS
 import qualified Data.Attoparsec.ByteString as A
 
-import Data.Word (Word8(..))
+import Data.Word (Word8)
 import Test.Tasty
 import Test.Tasty.HUnit
 
