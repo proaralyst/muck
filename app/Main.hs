@@ -1,14 +1,19 @@
 module Main where
 
-import qualified Screen
-import qualified TermEmu
-import Pipes
-import qualified Pipes.Prelude as P
+import qualified Data.Attoparsec as A
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BC
+import qualified Pipes.Prelude as P
+import qualified Screen
 import qualified System.IO as IO
+import qualified TermEmu 
+
 import Control.Concurrent (forkIO, MVar(..), newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (void, forever)
+import Control.Monad.State (runStateT)
 import Data.ByteString (ByteString(..), hPut)
+import Data.List (intercalate)
+import Pipes
 import Pipes.ByteString (stdin, stdout)
 import System.Exit (exitSuccess)
 import System.Posix.Signals
@@ -20,6 +25,7 @@ import System.Posix.Signals
     , softwareTermination
     )
 import System.Process (CmdSpec(..))
+import Text.Printf (printf)
 
 setup :: IO (MVar ())
 setup = do
@@ -36,12 +42,40 @@ setup = do
     IO.hSetEcho IO.stdin False
     return termVar
 
+logParse :: Consumer ByteString IO ()
+logParse = do
+    handle <- lift $ do
+        handle <- IO.openFile "/tmp/log.parsed" IO.WriteMode
+        IO.hSetBuffering handle IO.NoBuffering
+        return handle
+    await >>= go handle . parse
+  where
+    parse = A.parse TermEmu.parse
+
+    go handle (A.Fail remaining contexts msg) = do
+        lift . IO.hPutStrLn handle
+            $ printf "Parse error: %s (contexts: '%s'). Input: {%s}"
+                msg (intercalate "', '" contexts) (BC.unpack remaining)
+        chunk <- await
+        go handle (parse chunk)
+
+    go handle (A.Partial continuation) = do
+        chunk <- await
+        go handle (continuation chunk)
+
+    go handle (A.Done remaining token) = do
+        lift $ IO.hPrint handle token
+        if remaining == mempty
+        then await >>= go handle . parse
+        else go handle (parse remaining)
+
 handleOutput :: Screen.Screen -> IO ()
 handleOutput screen = do
     log <- IO.openFile "/tmp/log" IO.WriteMode
     IO.hSetBuffering log IO.NoBuffering
     runEffect $ Screen.output screen
         >-> (P.tee . P.mapM_ $ hPut log)
+        >-> P.tee logParse
         >-> stdout
     IO.hClose log
 

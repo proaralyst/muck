@@ -142,10 +142,10 @@ csi = intro *> (
     <|> selectGfx <$> params <* AC.char 'm'
     <|> deviceStatus <$> private <*> params <* AC.char 'n'
     <|> setTBM <$> params <* AC.char 'r'
-    )
+    ) <?> "CSI"
   where
-    private = option False $ const True <$> AC.char '?'
-    intro = string (BS.pack [0x1b, 0x5b]) <?> "CSI" -- ESC [
+    private = option False (const True <$> AC.char '?') <?> "Private"
+    intro = string (BS.pack [0x1b, 0x5b]) <?> "CSI intro" -- ESC [
     defaultParam val = fromMaybe val . headMay <$> params
     oneParam char def = defaultParam def <* AC.char char
 
@@ -164,4 +164,3 @@ parse :: Parser Out
 parse =
     CSI <$> csi
     <|> Raw . toEnum . fromIntegral <$> raw
-

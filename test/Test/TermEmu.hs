@@ -10,7 +10,6 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Data.Attoparsec.ByteString as A
 
 import Data.List (intercalate)
-import Data.Word (Word8)
 import Test.Tasty
 import Test.Tasty.HUnit
 import Text.Printf (printf)

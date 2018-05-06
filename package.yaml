@@ -28,6 +28,7 @@ dependencies:
 - lens              == 4.16.1
 - mtl               == 2.2.2
 - pipes             == 4.3.9
+- pipes-attoparsec  == 0.5.1.5
 - pipes-bytestring  == 2.1.6
 - process           == 1.6.1.0
 - safe              == 0.3.17
