@@ -55,7 +55,8 @@ logParse = do
     go handle (A.Fail remaining contexts msg) = do
         lift . IO.hPutStrLn handle
             $ printf "Parse error: %s (contexts: '%s'). Input: {%s}"
-                msg (intercalate "', '" contexts) (BC.unpack remaining)
+                msg (intercalate "', '" contexts)
+                (show $ fromEnum <$> BC.unpack remaining)
         chunk <- await
         go handle (parse chunk)
 

@@ -3,14 +3,17 @@ module TermEmu
     , TabClear(..)
     , BottomMargin(..)
     , CSI(..)
+    , Control(..)
     , number
     , params
+    , control
     , parse
     ) where
 
 import qualified Data.Attoparsec.ByteString.Char8 as AC
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
+import qualified Data.Text.Encoding as TE
 import qualified TermEmu.SGR as SGR
 
 import Control.Applicative ((<|>))
@@ -152,9 +155,35 @@ csi = intro *> (
 raw :: Parser Word8
 raw = satisfy (\ x -> x >= 0x20 && x <= 0x7F)
 
--- TODO: for speed convert Raw Char to Raw ByteString
+data Control = 
+      Bell
+    | Backspace
+    | HorizontalTab
+    | LineFeed
+    | CarriageReturn
+    | ShiftOut
+    | ShiftIn
+    deriving (Eq, Show)
+
+control :: Parser Control
+control = 
+        Bell `recognise` '\BEL'
+    <|> Backspace `recognise` '\BS'
+    <|> HorizontalTab `recognise` '\HT'
+    <|> LineFeed `recognise` '\LF'
+    <|> LineFeed `recognise` '\VT'
+    <|> LineFeed `recognise` '\FF'
+    <|> CarriageReturn `recognise` '\r'
+    <|> ShiftOut `recognise` '\SO'
+    <|> ShiftIn `recognise` '\SI'
+  where
+    recognise control char = AC.char char *> pure control
+
+-- TODO: Esc (C1)
+
 data Out =
-      Raw Char
+      Raw T.Text
+    | C0 Control
     | Esc
     | CSI CSI
     | Debug T.Text
@@ -162,5 +191,6 @@ data Out =
 
 parse :: Parser Out
 parse =
-    CSI <$> csi
-    <|> Raw . toEnum . fromIntegral <$> raw
+        CSI <$> csi
+    <|> C0 <$> control
+    <|> Raw . TE.decodeUtf8 . BS.pack <$> many1 raw

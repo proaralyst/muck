@@ -46,10 +46,20 @@ params = testGroup "params"
     tc = testCase
     test input = testParser T.params (BS.pack input)
 
+control :: TestTree
+control = testGroup "c0"
+    [ tc "Bell" $ test [0x07] T.Bell
+    , tc "CR" $ test [0x0D] T.CarriageReturn
+    ]
+  where
+    tc = testCase
+    test input = testParser T.control (BS.pack input)
+
+
 
 full :: TestTree
 full = testGroup "full"
-    [ tc "plain text" $ test "f" (T.Raw 'f')
+    [ tc "plain text" $ test "foo" (T.Raw "foo")
     , tc "SGR 256 colour" $ test "\ESC[38;5;34m"
         (T.CSI $ T.SGR [Right . SGR.Fg $ SGR.Colour256 34])
     , tc "SGR multi" $ test "\ESC[0;1;5;4m" . T.CSI . T.SGR $
@@ -62,6 +72,6 @@ full = testGroup "full"
 
 root :: TestTree 
 root = testGroup "TermEmu"
-    [ number, params, full
+    [ number, params, control, full
     ]
 
