@@ -4,20 +4,28 @@ module Test.TermEmu
     where
 
 import qualified TermEmu as T
+import qualified TermEmu.SGR as SGR
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Char8 as BC
 import qualified Data.Attoparsec.ByteString as A
 
+import Data.List (intercalate)
 import Data.Word (Word8)
 import Test.Tasty
 import Test.Tasty.HUnit
+import Text.Printf (printf)
 
-testParser :: (Show a, Eq a) => A.Parser a -> [Word8] -> a -> Assertion
+testParser :: (Show a, Eq a) => A.Parser a -> BS.ByteString -> a -> Assertion
 testParser parser input expected =
-    assert (A.parse parser (BS.pack input)) (\ partial ->
+    assert (A.parse parser input) (\ partial ->
         assert (partial BS.empty) (const $ assertFailure "Partial parse"))
   where
     assert res f = case res of
-        A.Fail _rest _context error -> assertFailure $ "Parse failed " ++ error
+        A.Fail rest contexts error ->
+            assertFailure $ printf "Parse failed: %s; remaining = '%s' (Contexts: '%s')"
+                error
+                (BC.unpack rest)
+                (intercalate "', '" contexts)
         A.Partial partial -> f partial
         A.Done _ res -> res @?= expected
 
@@ -28,7 +36,7 @@ number = testGroup "number"
     ]
   where
     tc = testCase
-    test = testParser T.number
+    test input = testParser T.number (BS.pack input)
 
 params :: TestTree
 params = testGroup "params"
@@ -37,10 +45,24 @@ params = testGroup "params"
     ]
   where
     tc = testCase
-    test = testParser T.params
+    test input = testParser T.params (BS.pack input)
+
+
+full :: TestTree
+full = testGroup "full"
+    [ tc "plain text" $ test "f" (T.Raw 'f')
+    , tc "SGR 256 colour" $ test "\ESC[38;5;34m"
+        (T.CSI $ T.SGR [Right . SGR.Fg $ SGR.Colour256 34])
+    , tc "SGR multi" $ test "\ESC[0;1;5;4m" . T.CSI . T.SGR $
+        Right <$> [ SGR.Clear, SGR.Bright, SGR.Blink, SGR.Underscore]
+    ]
+  where
+    tc = testCase
+    test input = testParser T.parse (BC.pack input)
+
 
 root :: TestTree 
 root = testGroup "TermEmu"
-    [ params, number
+    [ number, params, full
     ]
 

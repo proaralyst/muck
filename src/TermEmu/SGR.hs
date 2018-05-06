@@ -1,6 +1,7 @@
 module TermEmu.SGR
     ( Colour8(..)
     , ColourRGB(..), red , green, blue
+    , Colour(..)
     , SGR(..)
     , dispatchSGR
     ) where
@@ -61,7 +62,8 @@ data Colour =
     deriving (Eq, Show)
 
 data SGR =
-      Bright
+      Clear
+    | Bright
     | Dim
     | Italics
     | Underscore
@@ -114,6 +116,7 @@ consumeColour f =
 
 -- TODO: extended colour & parameter management
 consumeParam :: Natural -> Effect ()
+consumeParam 0  = emit Clear
 consumeParam 1  = emit Bright
 consumeParam 2  = emit Dim
 consumeParam 3  = emit Italics

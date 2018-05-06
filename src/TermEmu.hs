@@ -8,6 +8,7 @@ module TermEmu
     , parse
     ) where
 
+import qualified Data.Attoparsec.ByteString.Char8 as AC
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
 import qualified TermEmu.SGR as SGR
@@ -15,9 +16,9 @@ import qualified TermEmu.SGR as SGR
 import Control.Applicative ((<|>))
 import Data.Attoparsec.ByteString
     (Parser, (<?>), sepBy, string, option, many1, satisfy, inClass)
-import qualified Data.Attoparsec.ByteString.Char8 as AC
 import Data.Foldable (foldl')
 import Data.Maybe (fromMaybe)
+import Data.Word (Word8)
 import Numeric.Natural (Natural)
 import Safe (headMay)
 
@@ -26,7 +27,7 @@ import Safe (headMay)
 data TabClear =
       AtCursor
     | All
-    deriving (Show)
+    deriving (Eq, Show)
 
 instance Enum TabClear where
     toEnum 0 = AtCursor
@@ -39,7 +40,7 @@ instance Enum TabClear where
 data BottomMargin =
       Bottom
     | Line !Natural
-    deriving (Show)
+    deriving (Eq, Show)
 
 data CSI =
       ICH !Natural
@@ -69,7 +70,7 @@ data CSI =
     | SGR ![Either T.Text SGR.SGR]
     | DSR
     | DECSTBM !Natural !BottomMargin
-    deriving (Show)
+    deriving (Eq, Show)
 
 number :: Parser Natural
 number = foldl' (\ acc x -> acc * 10 + x) 0 <$> many1 digit
@@ -148,14 +149,19 @@ csi = intro *> (
     defaultParam val = fromMaybe val . headMay <$> params
     oneParam char def = defaultParam def <* AC.char char
 
+raw :: Parser Word8
+raw = satisfy (\ x -> x >= 0x20 && x <= 0x7F)
+
+-- TODO: for speed convert Raw Char to Raw ByteString
 data Out =
       Raw Char
     | Esc
     | CSI CSI
     | Debug T.Text
-    deriving (Show)
-
+    deriving (Eq, Show)
 
 parse :: Parser Out
-parse = CSI <$> csi
+parse =
+    CSI <$> csi
+    <|> Raw . toEnum . fromIntegral <$> raw
 
