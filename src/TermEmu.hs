@@ -82,6 +82,7 @@ number = foldl' (\ acc x -> acc * 10 + x) 0 <$> many1 digit
     digit = fromIntegral . flip (-) 0x30 <$> satisfy (inClass "0-9")
 
 -- TODO: might be different handling for ; and :
+-- TODO: default is _wrong_: ';2' should parse to '[Nothing, Just 2]'
 params :: Parser [Natural]
 params = param `sepBy` separator <?> "Params"
   where
@@ -97,19 +98,19 @@ pair f _     second [x]         = f x second
 pair f _     _      (x : y : _) = f x y
 
 deviceAttrs :: Bool -> [Natural] -> CSI
-deviceAttrs = undefined
+deviceAttrs _ _ = DA
 
 resetMode :: Bool -> [Natural] -> CSI
-resetMode = undefined
+resetMode _ _ = RM
 
 setMode :: Bool -> [Natural] -> CSI
-setMode = undefined
+setMode _ _ = SM
 
 selectGfx :: [Natural] -> CSI
 selectGfx = SGR . SGR.dispatchSGR
 
 deviceStatus :: Bool -> [Natural] -> CSI
-deviceStatus = undefined
+deviceStatus _ _ = DSR
 
 setTBM :: [Natural] -> CSI
 setTBM [] = DECSTBM 1 Bottom
@@ -155,7 +156,7 @@ csi = intro *> (
 raw :: Parser Word8
 raw = satisfy (\ x -> x >= 0x20 && x <= 0x7F)
 
-data Control = 
+data Control =
       Bell
     | Backspace
     | HorizontalTab
@@ -166,7 +167,7 @@ data Control =
     deriving (Eq, Show)
 
 control :: Parser Control
-control = 
+control =
         Bell `recognise` '\BEL'
     <|> Backspace `recognise` '\BS'
     <|> HorizontalTab `recognise` '\HT'
