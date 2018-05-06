@@ -21,7 +21,7 @@ data Colour8 =
     | Magenta
     | Cyan
     | White
-    deriving (Eq, Show)
+    deriving (Eq, Ord, Show)
 
 dispatchColour8 :: Word.Word8 -> Colour8
 dispatchColour8 0 = Black
@@ -38,7 +38,7 @@ data ColourRGB =
     { _red :: Natural
     , _green :: Natural
     , _blue :: Natural
-    }
+    } deriving (Eq, Ord, Show)
 
 makeLenses ''ColourRGB
 
@@ -47,6 +47,7 @@ data Colour =
     | Colour256 Word.Word8
     | RGB ColourRGB
     | Default
+    deriving (Eq, Show)
 
 data SGR =
       Bright
@@ -66,6 +67,7 @@ data SGR =
     | NotStrikethrough
     | Fg Colour
     | Bg Colour
+    deriving (Eq, Show)
 
 data EffectF r =
       Emit SGR r

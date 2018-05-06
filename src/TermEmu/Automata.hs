@@ -53,8 +53,9 @@ entryAction _               = Nop
 exitAction :: State -> Action
 exitAction DcsPassthrough = Unhook
 exitAction OscString      = OscEnd
+exitAction _              = Nop
 
-inRange :: (Num a, Ord a) => a -> a -> a -> Bool
+inRange ::  Ord a => a -> a -> a -> Bool
 inRange x low high = low <= x && x <= high
 
 isNonPrinting :: Word.Word8 -> Bool
@@ -159,3 +160,4 @@ nextState CsiParam x
     | x == 0x7F                                         = (CsiParam, Nop)
     | x `inRange` 0x3C $ 0x3F, x == 0x3A                = (CsiIgnore, Nop)
     | x `inRange` 0x40 $ 0x7E                           = (Ground, CsiDispatch)
+nextState _state _x = undefined

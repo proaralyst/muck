@@ -1,12 +1,13 @@
 module Main where
 
 import qualified Screen
+import qualified TermEmu
 import Pipes
 import qualified Pipes.Prelude as P
 import qualified Data.ByteString as BS
 import qualified System.IO as IO
 import Control.Concurrent (forkIO, MVar(..), newEmptyMVar, putMVar, takeMVar)
-import Control.Monad (void)
+import Control.Monad (void, forever)
 import Data.ByteString (ByteString(..), hPut)
 import Pipes.ByteString (stdin, stdout)
 import System.Exit (exitSuccess)

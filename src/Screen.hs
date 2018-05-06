@@ -7,16 +7,15 @@ module Screen
     , input
     ) where
 
-import qualified Data.Word as Word
 import Control.Lens
-import Data.ByteString (ByteString(..), hGetSome)
+import Data.ByteString (ByteString)
 import Pipes
 import Pipes.ByteString (fromHandle, toHandle)
-import System.IO (Handle(..), hSetBuffering, BufferMode(..))
+import System.IO (Handle, hSetBuffering, BufferMode(..))
 import System.Posix.Terminal (openPseudoTerminal)
 import System.Posix.IO (fdToHandle)
 import System.Process
-    (CmdSpec, ProcessHandle(..), CreateProcess(..), createProcess, StdStream(..))
+    (CmdSpec, ProcessHandle, CreateProcess(..), createProcess, StdStream(..))
 
 data Screen = Screen
     { _pty   :: !Handle
@@ -27,7 +26,7 @@ makeLenses ''Screen
 
 
 new :: CmdSpec -> IO Screen
-new cmdspec = do
+new spec = do
     let toHandle fd = do
             handle <- fdToHandle fd
             hSetBuffering handle NoBuffering
@@ -36,7 +35,7 @@ new cmdspec = do
     master <- toHandle masterFd
     slave <- toHandle slaveFd
     (_, _, _, ph) <- createProcess CreateProcess
-        { cmdspec = cmdspec
+        { cmdspec = spec
         , cwd = Nothing
         , env = Nothing
         , std_in = UseHandle slave
