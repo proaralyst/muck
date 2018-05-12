@@ -16,16 +16,15 @@ import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
 import qualified TermEmu.SGR as SGR
 
-import Control.Applicative ((<|>))
+import Control.Applicative ((<|>), liftA2)
+import Control.Monad (join)
 import Data.Attoparsec.ByteString
-    (Parser, (<?>), sepBy, string, option, many1, satisfy, inClass)
+    (Parser, (<?>), sepBy1, string, option, many1, satisfy, inClass)
 import Data.Foldable (foldl')
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, catMaybes)
 import Data.Word (Word8)
 import Numeric.Natural (Natural)
 import Safe (headMay)
-
--- TODO: DA SM RM & DSR
 
 data TabClear =
       AtCursor
@@ -98,22 +97,25 @@ number = foldl' (\ acc x -> acc * 10 + x) 0 <$> many1 digit
     digit = fromIntegral . flip (-) 0x30 <$> satisfy (inClass "0-9")
 
 -- TODO: might be different handling for ; and :
--- TODO: default is _wrong_: ';2' should parse to '[Nothing, Just 2]'
-params :: Parser [Natural]
-params = param `sepBy` separator <?> "Params"
+params :: Parser [Maybe Natural]
+params =
+    liftA2 (:) optional (separator *> optional `sepBy1` separator)
+    <|> return . Just <$> param
+    <|> pure []
+    <?> "Params"
   where
     -- TODO: This is actually capable of taking 0x30 to 0x3F but I don't know how to
     -- deal with the non-numerics
-    param :: Parser Natural
     param = number <?> "Param"
+    optional = option Nothing (Just <$> param)
     separator = AC.char ':' <|> AC.char ';'
 
-pair :: (Natural -> Natural -> a) -> Natural -> Natural -> [Natural] -> a
+pair :: (Natural -> Natural -> a) -> Natural -> Natural -> [Maybe Natural] -> a
 pair f first second []          = f first second
-pair f _     second [x]         = f x second
-pair f _     _      (x : y : _) = f x y
+pair f first second [x]         = f (fromMaybe first x) second
+pair f first second (x : y : _) = f (fromMaybe first x) (fromMaybe second y)
 
-deviceAttrs :: Bool -> [Natural] -> CSI
+deviceAttrs :: Bool -> [Maybe Natural] -> CSI
 deviceAttrs _ _ = DA
 
 mode :: Bool -> Natural -> Mode
@@ -133,16 +135,16 @@ mode True 1006 = MouseSGR
 mode True 1047 = Alternate False
 mode True 1049 = Alternate True
 
-selectGfx :: [Natural] -> CSI
-selectGfx = SGR . SGR.dispatchSGR
+selectGfx :: [Maybe Natural] -> CSI
+selectGfx = SGR . SGR.dispatchSGR . fmap (fromMaybe 0)
 
-deviceStatus :: Bool -> [Natural] -> CSI
+deviceStatus :: Bool -> [Maybe Natural] -> CSI
 deviceStatus _ _ = DSR
 
-setTBM :: [Natural] -> CSI
-setTBM [] = DECSTBM 1 Bottom
-setTBM [x] = DECSTBM x Bottom
-setTBM (t : b : _) = DECSTBM t (Line b)
+setTBM :: [Maybe Natural] -> CSI
+setTBM []          = DECSTBM 1 Bottom
+setTBM [x]         = DECSTBM (fromMaybe 1 x) Bottom
+setTBM (t : b : _) = DECSTBM (fromMaybe 1 t) (fromMaybe Bottom (Line <$> b))
 
 csi :: Parser CSI
 csi = intro *> (
@@ -168,8 +170,8 @@ csi = intro *> (
     <|> VPA <$> oneParam 'd' 1
     <|> pair HVP 1 2 <$> (params <* AC.char 'f') -- TODO: consider emitting CUP here
     <|> TBC . toEnum . fromIntegral <$> oneParam 'g' 0
-    <|> RM <$> (fmap <$> (mode <$> private) <*> params <* AC.char 'h')
-    <|> SM <$> (fmap <$> (mode <$> private) <*> params <* AC.char 'l')
+    <|> RM <$> (modes <* AC.char 'h')
+    <|> SM <$> (modes <* AC.char 'l')
     <|> selectGfx <$> params <* AC.char 'm'
     <|> deviceStatus <$> private <*> params <* AC.char 'n'
     <|> setTBM <$> params <* AC.char 'r'
@@ -177,8 +179,9 @@ csi = intro *> (
   where
     private = option False (const True <$> AC.char '?') <?> "Private"
     intro = string (BS.pack [0x1b, 0x5b]) <?> "CSI intro" -- ESC [
-    defaultParam val = fromMaybe val . headMay <$> params
+    defaultParam val = fromMaybe val . join . headMay <$> params
     oneParam char def = defaultParam def <* AC.char char
+    modes = fmap <$> (mode <$> private) <*> (catMaybes <$> params)
 
 raw :: Parser Word8
 raw = satisfy (\ x -> x >= 0x20 && x <= 0x7F)
@@ -207,7 +210,7 @@ control =
   where
     recognise control char = AC.char char *> pure control
 
--- TODO: Esc (C1)
+-- TODO: Esc (C1) & DSR
 
 data Out =
       Raw T.Text

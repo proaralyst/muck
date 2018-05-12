@@ -40,7 +40,9 @@ number = testGroup "number"
 params :: TestTree
 params = testGroup "params"
     [ tc "Handles empty string" $ test [] []
-    , tc "Single param" $ test [0x30] [0]
+    , tc "Single param" $ test [0x30] [Just 0]
+    , tc "Multiple with defaults" $ test
+        [0x30, 0x3b, 0x37, 0x3b, 0x3b] [Just 0, Just 7, Nothing, Nothing]
     ]
   where
     tc = testCase
@@ -70,7 +72,7 @@ full = testGroup "full"
     test input = testParser T.parse (BC.pack input)
 
 
-root :: TestTree 
+root :: TestTree
 root = testGroup "TermEmu"
     [ number, params, control, full
     ]
