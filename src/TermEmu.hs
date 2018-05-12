@@ -210,18 +210,60 @@ control =
   where
     recognise control char = AC.char char *> pure control
 
--- TODO: Esc (C1) & DSR
+data C1 =
+      SCSG0_ON
+    | SCSG1_ON
+    | DECSC
+    | DECRC
+    | DECALN
+    | DECKPAM
+    | DECKPNM
+    | SCSG0_OFF
+    | SCSG1_OFF
+    | IND
+    | NEL
+    | HTS
+    | RI
+    | ST
+    | RIS
+    deriving (Eq, Show)
+
+esc :: Parser C1
+esc = AC.char '\ESC' *> (
+        AC.char '0' *> private '(' *> pure SCSG0_ON
+    <|> AC.char '0' *> private ')' *> pure SCSG1_ON
+    <|> AC.char '7' *> pure DECSC
+    <|> AC.char '8' *> pure DECRC
+    <|> AC.char '8' *> private '#' *> pure DECALN
+    <|> AC.char '=' *> pure DECKPAM
+    <|> AC.char '>' *> pure DECKPNM
+    <|> AC.char 'B' *> private '(' *> pure SCSG0_OFF
+    <|> AC.char 'B' *> private ')' *> pure SCSG1_OFF
+    <|> AC.char 'D' *> pure IND
+    <|> AC.char 'E' *> pure NEL
+    <|> AC.char 'H' *> pure HTS
+    <|> AC.char 'M' *> pure RI
+    <|> AC.char '\\'*> pure ST
+    <|> AC.char 'c' *> pure RIS
+    )
+  where
+    private char = (AC.char char *> pure True) <|> pure False
+
+-- TODO: DSR
+
+-- TODO: allow for malformed sequences
 
 data Out =
-      Raw T.Text
-    | C0 Control
-    | Esc
-    | CSI CSI
-    | Debug T.Text
+      Raw !T.Text
+    | C0 !Control
+    | Esc !C1
+    | CSI !CSI
+    | Debug !T.Text
     deriving (Eq, Show)
 
 parse :: Parser Out
 parse =
         CSI <$> csi
     <|> C0 <$> control
+    <|> Esc <$> esc
     <|> Raw . TE.decodeUtf8 . BS.pack <$> many1 raw

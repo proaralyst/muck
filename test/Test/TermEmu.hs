@@ -66,6 +66,7 @@ full = testGroup "full"
         (T.CSI $ T.SGR [Right . SGR.Fg $ SGR.Colour256 34])
     , tc "SGR multi" $ test "\ESC[0;1;5;4m" . T.CSI . T.SGR $
         Right <$> [ SGR.Clear, SGR.Bright, SGR.Blink, SGR.Underscore]
+    , tc "No params SGR" $ test "\ESC[m" . T.CSI $ T.SGR []
     ]
   where
     tc = testCase
