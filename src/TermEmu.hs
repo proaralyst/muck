@@ -249,8 +249,7 @@ esc = AC.char '\ESC' *> (
   where
     private char = (AC.char char *> pure True) <|> pure False
 
--- TODO: DSR
-
+-- TODO: DSR & utf-8
 -- TODO: allow for malformed sequences
 
 data Out =
