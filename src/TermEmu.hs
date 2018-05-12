@@ -45,6 +45,22 @@ data BottomMargin =
     | Line !Natural
     deriving (Eq, Show)
 
+data Mode =
+      IRM
+      | DECCKM
+      | DECCOLM
+      | DECAWM
+      | Blinking
+      | TCEM
+      | Alternate !Bool
+      | MouseStandard
+      | MouseButton
+      | MouseAll
+      | MouseFocusOn
+      | MouseUTF8
+      | MouseSGR
+    deriving (Eq, Show)
+
 data CSI =
       ICH !Natural
     | CUU !Natural
@@ -68,8 +84,8 @@ data CSI =
     | VPA !Natural
     | HVP !Natural !Natural
     | TBC !TabClear
-    | SM
-    | RM
+    | SM  ![Mode]
+    | RM  ![Mode]
     | SGR ![Either T.Text SGR.SGR]
     | DSR
     | DECSTBM !Natural !BottomMargin
@@ -100,11 +116,22 @@ pair f _     _      (x : y : _) = f x y
 deviceAttrs :: Bool -> [Natural] -> CSI
 deviceAttrs _ _ = DA
 
-resetMode :: Bool -> [Natural] -> CSI
-resetMode _ _ = RM
-
-setMode :: Bool -> [Natural] -> CSI
-setMode _ _ = SM
+mode :: Bool -> Natural -> Mode
+mode False   4 = IRM
+mode True    1 = DECCKM
+mode True    3 = DECCOLM
+mode True    7 = DECAWM
+mode True   12 = Blinking
+mode True   25 = TCEM
+mode True   47 = Alternate False
+mode True 1000 = MouseStandard
+mode True 1002 = MouseButton
+mode True 1003 = MouseAll
+mode True 1004 = MouseFocusOn
+mode True 1005 = MouseUTF8
+mode True 1006 = MouseSGR
+mode True 1047 = Alternate False
+mode True 1049 = Alternate True
 
 selectGfx :: [Natural] -> CSI
 selectGfx = SGR . SGR.dispatchSGR
@@ -141,8 +168,8 @@ csi = intro *> (
     <|> VPA <$> oneParam 'd' 1
     <|> pair HVP 1 2 <$> (params <* AC.char 'f') -- TODO: consider emitting CUP here
     <|> TBC . toEnum . fromIntegral <$> oneParam 'g' 0
-    <|> resetMode <$> private <*> params <* AC.char 'h'
-    <|>   setMode <$> private <*> params <* AC.char 'l'
+    <|> RM <$> (fmap <$> (mode <$> private) <*> params <* AC.char 'h')
+    <|> SM <$> (fmap <$> (mode <$> private) <*> params <* AC.char 'l')
     <|> selectGfx <$> params <* AC.char 'm'
     <|> deviceStatus <$> private <*> params <* AC.char 'n'
     <|> setTBM <$> params <* AC.char 'r'
