@@ -1,10 +1,10 @@
-module Test.TermEmu
+module Test.TermEmu.Parser
     ( root
     )
     where
 
-import qualified TermEmu as T
-import qualified TermEmu.SGR as SGR
+import qualified TermEmu.Parser as P
+import qualified TermEmu.Parser.SGR as SGR
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.Attoparsec.ByteString as A
@@ -35,7 +35,7 @@ number = testGroup "number"
     ]
   where
     tc = testCase
-    test input = testParser T.number (BS.pack input)
+    test input = testParser P.number (BS.pack input)
 
 params :: TestTree
 params = testGroup "params"
@@ -46,31 +46,31 @@ params = testGroup "params"
     ]
   where
     tc = testCase
-    test input = testParser T.params (BS.pack input)
+    test input = testParser P.params (BS.pack input)
 
 control :: TestTree
 control = testGroup "c0"
-    [ tc "Bell" $ test [0x07] T.Bell
-    , tc "CR" $ test [0x0D] T.CarriageReturn
+    [ tc "Bell" $ test [0x07] P.Bell
+    , tc "CR" $ test [0x0D] P.CarriageReturn
     ]
   where
     tc = testCase
-    test input = testParser T.control (BS.pack input)
+    test input = testParser P.control (BS.pack input)
 
 
 
 full :: TestTree
 full = testGroup "full"
-    [ tc "plain text" $ test "foo" (T.Raw "foo")
+    [ tc "plain text" $ test "foo" (P.Raw "foo")
     , tc "SGR 256 colour" $ test "\ESC[38;5;34m"
-        (T.CSI $ T.SGR [Right . SGR.Fg $ SGR.Colour256 34])
-    , tc "SGR multi" $ test "\ESC[0;1;5;4m" . T.CSI . T.SGR $
+        (P.CSI $ P.SGR [Right . SGR.Fg $ SGR.Colour256 34])
+    , tc "SGR multi" $ test "\ESC[0;1;5;4m" . P.CSI . P.SGR $
         Right <$> [ SGR.Clear, SGR.Bright, SGR.Blink, SGR.Underscore]
-    , tc "No params SGR" $ test "\ESC[m" . T.CSI $ T.SGR []
+    , tc "No params SGR" $ test "\ESC[m" . P.CSI $ P.SGR []
     ]
   where
     tc = testCase
-    test input = testParser T.parse (BC.pack input)
+    test input = testParser P.parse (BC.pack input)
 
 
 root :: TestTree

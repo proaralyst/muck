@@ -6,7 +6,7 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Pipes.Prelude as P
 import qualified Screen
 import qualified System.IO as IO
-import qualified TermEmu 
+import qualified TermEmu.Parser as TP
 
 import Control.Concurrent (forkIO, MVar(..), newEmptyMVar, putMVar, takeMVar)
 import Control.Monad (void, forever)
@@ -50,7 +50,7 @@ logParse = do
         return handle
     await >>= go handle . parse
   where
-    parse = A.parse TermEmu.parse
+    parse = A.parse TP.parse
 
     go handle (A.Fail remaining contexts msg) = do
         lift . IO.hPutStrLn handle

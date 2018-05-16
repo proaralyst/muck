@@ -1,4 +1,4 @@
-module TermEmu.SGR
+module TermEmu.Parser.SGR
     ( Colour8(..)
     , ColourRGB(..), red , green, blue
     , Colour(..)

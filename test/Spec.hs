@@ -1,5 +1,5 @@
 import Test.Tasty
-import qualified Test.TermEmu as TE (root)
+import qualified Test.TermEmu.Parser as TE (root)
 
 main :: IO ()
 main = defaultMain tests

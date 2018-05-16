@@ -1,4 +1,4 @@
-module TermEmu
+module TermEmu.Parser
     ( Out(..)
     , TabClear(..)
     , BottomMargin(..)
@@ -14,7 +14,7 @@ import qualified Data.Attoparsec.ByteString.Char8 as AC
 import qualified Data.ByteString as BS
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as TE
-import qualified TermEmu.SGR as SGR
+import qualified TermEmu.Parser.SGR as SGR
 
 import Control.Applicative ((<|>), liftA2)
 import Control.Monad (join)
